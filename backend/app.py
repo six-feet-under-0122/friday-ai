@@ -54,6 +54,7 @@ def upload_pdf():
 @app.route('/chat', methods=['POST'])
 def chat_with_ai():
     data = request.json
+
     user_msg = data.get('message', '')
     if not user_msg:
         return jsonify({"status": "error", "msg": "提问不能为空"}), 400
@@ -69,6 +70,7 @@ def chat_with_ai():
         )
 
         ai_reply = response.choices[0].message.content
+        print("response:",response)
         print(f"AI回复: {ai_reply}")
 
         return jsonify({"status": "success", "reply": ai_reply})
