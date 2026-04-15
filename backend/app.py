@@ -1,8 +1,10 @@
-
+from zhipuai import ZhipuAI
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import main
+import rag_core
+from dotenv import load_dotenv
 import os
+load_dotenv()
 import uuid
 # 假设你的核心代码写在 rag_core.py 中，里面有两个函数：
 # 1. build_knowledge_base(pdf_path) -> 处理PDF存入Chroma
@@ -17,6 +19,8 @@ CORS(app)  # 允许跨域请求，Vue前端才能连上
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+API_KEY = os.environ.get("ZHIPUAI_API_KEY")
+client = ZhipuAI(api_key=API_KEY)
 
 
 @app.route('/upload', methods=['POST'])
@@ -37,7 +41,7 @@ def upload_pdf():
             # 4. === 把文件路径丢给你的Python处理脚本 ===
             # build_knowledge_base(file_path)
             file_path = os.path.abspath(file_path)#c存成绝对路径
-            main.process_pdf(file_path)
+            rag_core.process_pdf(file_path)
             print(f"成功保存并处理文件: {file_path}")
             return jsonify({"status": "success", "msg": "知识库构建完成"})
         except Exception as e:
@@ -46,6 +50,32 @@ def upload_pdf():
 
     return jsonify({"status": "error", "msg": "只支持 PDF 文件"}), 400
 
+
+@app.route('/chat', methods=['POST'])
+def chat_with_ai():
+    data = request.json
+    user_msg = data.get('message', '')
+    if not user_msg:
+        return jsonify({"status": "error", "msg": "提问不能为空"}), 400
+
+    try:
+        print(f"收到用户提问: {user_msg}")
+        response = client.chat.completions.create(
+            model="glm-4",
+            messages=[
+                {"role": "system", "content": "你是一个幽默、专业的AI助手。"},
+                {"role": "user", "content": user_msg}
+            ]
+        )
+
+        ai_reply = response.choices[0].message.content
+        print(f"AI回复: {ai_reply}")
+
+        return jsonify({"status": "success", "reply": ai_reply})
+
+    except Exception as e:
+        print(f"调用AI大模型失败: {e}")
+        return jsonify({"status": "error", "msg": f"AI罢工了: {str(e)}"}), 500
 
 
 if __name__ == '__main__':

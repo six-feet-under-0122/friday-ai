@@ -1,14 +1,12 @@
+from dotenv import load_dotenv
 import os
+load_dotenv()
 from pathlib import Path
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import ZhipuAIEmbeddings
-
-# 请确保在环境变量或���里配置好 API KEY
-os.environ["ZHIPUAI_API_KEY"] = "你的智谱API_KEY"
-
 
 def load_pdf_pages(pdf_path: str):
     """加载 PDF 文件并进行严格的路径与内容校验"""
@@ -67,7 +65,7 @@ def process_pdf(file_path):
 
 
         embeddings = ZhipuAIEmbeddings(
-
+            api_key=os.getenv("ZHIPUAI_API_KEY"),
             model="embedding-3"  
         )
         
