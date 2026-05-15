@@ -4,9 +4,12 @@ load_dotenv()
 from pathlib import Path
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from typing import List, Dict
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
+# 下面的import 可能因版本不同需调整
 from langchain_community.embeddings import ZhipuAIEmbeddings
+
 
 def load_pdf_pages(pdf_path: str):
     """加载 PDF 文件并进行严格的路径与内容校验"""
@@ -80,4 +83,43 @@ def process_pdf(file_path):
         
     except Exception as e:
         print(f"❌ 处理 PDF 失败: {e}")
-        raise e  
+        raise e
+# 新加的代码----------------------------------------------------------------------------------
+# ----------------------------新加的代码----------------------------------------
+
+def _doc_key(d: Document) -> str:
+        # 优先用你在切分时写入的 chunk_id
+    cid = (d.metadata or {}).get("chunk_id")
+    if cid:
+        return str(cid)
+
+        # 兜底：source + page（再兜底取文本前缀）
+    md = d.metadata or {}
+    return f"{md.get('source', '?')}|{md.get('page', '?')}|{(d.page_content or '')[:80]}"
+
+def weighted_hybrid_retrieve(
+    query: str,
+    *,
+    bm25,
+    vec,
+    k: int = 8,
+    w_bm25: float = 0.5,
+    w_vec: float = 0.5,
+) -> List[Document]:
+    bm25_docs = bm25.invoke(query)
+    vec_docs = vec.invoke(query)
+
+    scores: Dict[str, float] = {}
+    picked: Dict[str, Document] = {}
+
+    def add(docs: List[Document], weight: float):
+        for rank, d in enumerate(docs):
+            key = _doc_key(d)
+            picked[key] = d
+            scores[key] = scores.get(key, 0.0) + weight * (1.0 / (rank + 1))
+
+    add(bm25_docs, w_bm25)
+    add(vec_docs, w_vec)
+
+    ranked_keys = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+    return [picked[kk] for kk in ranked_keys[:k]]

@@ -1,7 +1,13 @@
 from pathlib import Path
 from langchain_community.document_loaders import PyMuPDFLoader
-
-
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from typing import List, Dict
+from langchain_core.documents import Document
+from langchain_community.retrievers import BM25Retriever
+from dotenv import load_dotenv
+from langchain_community.vectorstores import Chroma
+# 下面的import 可能因版本不同需调整
+from langchain_community.embeddings import ZhipuAIEmbeddings
 # ----------！！！上传！！！----------
 def load_pdf_pages(pdf_path: str):
     # 1) 把用户传入的路径转换为标准绝对路径
@@ -21,12 +27,11 @@ def load_pdf_pages(pdf_path: str):
         raise ValueError(f"Loaded 0 pages from PDF: {pdf_path}")
 
     return docs
-docs=load_pdf_pages("D:\\team\\friday-ai\\backend\\test.pdf")
+docs=load_pdf_pages("D:\\friday-ai\\backend\\test.pdf")
 print(docs[0].metadata)
 
 # ----------！！！切分！！！----------
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
+
 
 def chunk_documents(
     page_docs,
@@ -52,21 +57,18 @@ def chunk_documents(
         # 把每个 piece 再包装成 Document，并继承原 metadata
         for j, piece in enumerate(pieces):
             md = dict(d.metadata or {})
-            md["chunk_id"] = f"p{md.get('page','?')}_c{j}"
+            src = md.get("source", "?")
+            md["chunk_id"] = f"{src}|p{md.get('page', '?')}_c{j}"
+
             md["chunk_size"] = len(piece)
             chunks.append(Document(page_content=piece, metadata=md))
 
     return chunks
-docs = load_pdf_pages(r"D:\team\friday-ai\backend\test.pdf")
+
 chunks = chunk_documents(docs, chunk_size=800, chunk_overlap=120)
 
-import os
-from dotenv import load_dotenv
 load_dotenv()
-from langchain_community.vectorstores import Chroma
 
-# 下面两个 import 可能因版本不同需调整
-from langchain_community.embeddings import ZhipuAIEmbeddings
 
 PERSIST_DIR = "chroma_db"
 COLLECTION_NAME = "pdf_chunks"
@@ -104,13 +106,77 @@ def get_or_build_vectorstore(chunks):
         vs.persist()
 
     return vs
+# ----------------------------新加的代码----------------------------------------
+
+def _doc_key(d: Document) -> str:
+        # 优先用你在切分时写入的 chunk_id
+    cid = (d.metadata or {}).get("chunk_id")
+    if cid:
+        return str(cid)
+
+        # 兜底：source + page（再兜底取文本前缀）
+    md = d.metadata or {}
+    return f"{md.get('source', '?')}|{md.get('page', '?')}|{(d.page_content or '')[:80]}"
+
+def weighted_hybrid_retrieve(
+    query: str,
+    *,
+    bm25,
+    vec,
+    k: int = 8,
+    w_bm25: float = 0.5,
+    w_vec: float = 0.5,
+) -> List[Document]:
+    bm25_docs = bm25.invoke(query)
+    vec_docs = vec.invoke(query)
+
+    scores: Dict[str, float] = {}
+    picked: Dict[str, Document] = {}
+
+    def add(docs: List[Document], weight: float):
+        for rank, d in enumerate(docs):
+            key = _doc_key(d)
+            picked[key] = d
+            scores[key] = scores.get(key, 0.0) + weight * (1.0 / (rank + 1))
+
+    add(bm25_docs, w_bm25)
+    add(vec_docs, w_vec)
+
+    ranked_keys = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+    return [picked[kk] for kk in ranked_keys[:k]]
 
 
 
+# --------------------------------------------------------------------
 print("页数总共有:", len(docs))
 print("一共切成:", len(chunks),"块")
 print("="*50)
 print("第一个chunk metadata:", chunks[0].metadata)
 print("第一个chunk preview:\n", chunks[0].page_content)
+# ---------- BM25 ----------
+bm25 = BM25Retriever.from_documents(chunks)
+bm25.k = 5
+
+query = "困惑期怎么度过"
+bm25_hits = bm25.invoke(query)
+
+print("\n[BM25 hits]")
+for i, d in enumerate(bm25_hits, 1):
+    print(f"{i}. page={d.metadata.get('page')} chunk_id={d.metadata.get('chunk_id')}")
+    print(d.page_content[:200].replace("\n", " "))
+    print("-" * 60)
+
+# ---------- VectorStore / Vector Retriever ----------
 vs = get_or_build_vectorstore(chunks)
+vec = vs.as_retriever(search_kwargs={"k": 5})
 print("Chroma count:", vs._collection.count())
+
+
+# ---------- Hybrid ----------
+hybrid_hits = weighted_hybrid_retrieve(query, bm25=bm25, vec=vec, k=5)
+
+print("\n[Hybrid hits]")
+for i, d in enumerate(hybrid_hits, 1):
+    print(f"{i}. page={d.metadata.get('page')} chunk_id={d.metadata.get('chunk_id')}")
+    print(d.page_content[:200].replace("\n", " "))
+    print("-" * 60)
