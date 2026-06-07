@@ -1,4 +1,4 @@
-# train_reranker.py (重写这个文件)
+# train_reranker.py
 import pandas as pd
 import numpy as np
 import json
@@ -14,9 +14,6 @@ warnings.filterwarnings('ignore')
 
 
 def train_reranker():
-    """训练重排模型并保存到 models/ 目录"""
-
-    # 1. 加载数据
     print("=" * 60)
     print("加载标注数据...")
 
@@ -29,18 +26,18 @@ def train_reranker():
     df = pd.DataFrame(data)
     print(f"加载完成: {len(df)} 条, 正例: {(df['label'] == 1).sum()}")
 
-    # 2. 特征提取（使用与推理时相同的特征）
+    # 特征提取（必须与 svm_reranker.py 完全一致）
     print("\n提取特征...")
 
     # BM25特征
     df['bm25_score'] = 1.0 / (df['bm25_rank'] + 1)
     df['bm25_rank_reciprocal'] = 1.0 / (df['bm25_rank'] + 10)
 
-    # 向量特征（处理未召回）
+    # 向量特征
     df['vec_recalled'] = (df['vec_rank'] < 9999).astype(int)
     df['vec_score'] = np.where(df['vec_recalled'] == 1, 1.0 / (df['vec_rank'] + 1), 0.01)
 
-    # 文本重叠特征
+    # 文本重叠
     def char_overlap(query, chunk):
         if not query or not chunk:
             return 0
@@ -61,12 +58,14 @@ def train_reranker():
     df['chunk_len'] = df['chunk_text'].apply(len)
     df['len_ratio'] = df['chunk_len'] / (df['query_len'] + 1)
 
-    # 3. 准备训练数据
+    # ⚠️ 特征顺序必须与 svm_reranker.py 中的 extract_features 完全一致
     feature_cols = [
-        'bm25_score', 'bm25_rank_reciprocal',
-        'vec_recalled', 'vec_score',
-        'char_overlap',
-        'len_ratio'
+        'bm25_score',  # 索引0
+        'bm25_rank_reciprocal',  # 索引1
+        'vec_recalled',  # 索引2
+        'vec_score',  # 索引3
+        'char_overlap',  # 索引4
+        'len_ratio'  # 索引5
     ]
 
     X = df[feature_cols].values
@@ -84,12 +83,12 @@ def train_reranker():
 
     print(f"训练集: {X_train.shape[0]} 条, 测试集: {X_test.shape[0]} 条")
 
-    # 4. 标准化
+    # 标准化
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    # 5. 训练逻辑回归（简单有效）
+    # 训练
     model = LogisticRegression(
         class_weight='balanced',
         C=1.0,
@@ -99,7 +98,7 @@ def train_reranker():
 
     model.fit(X_train_scaled, y_train)
 
-    # 6. 评估
+    # 评估
     y_pred = model.predict(X_test_scaled)
     y_prob = model.predict_proba(X_test_scaled)[:, 1]
 
@@ -112,32 +111,27 @@ def train_reranker():
     print("\n分类报告:")
     print(classification_report(y_test, y_pred, target_names=['不相关', '相关']))
 
-    # 7. 保存模型
+    # 特征重要性
+    feature_importance = np.abs(model.coef_[0])
+    print("\n特征重要性:")
+    for feat, imp in sorted(zip(feature_cols, feature_importance), key=lambda x: x[1], reverse=True):
+        print(f"  {feat}: {imp:.4f}")
+
+    # 保存模型（包含所有必要信息）
     os.makedirs('models', exist_ok=True)
 
     pipeline = {
         'model': model,
         'scaler': scaler,
-        'feature_cols': feature_cols,
+        'feature_cols': feature_cols,  # 保存特征顺序
         'metrics': {'auc': auc, 'f1': f1}
     }
 
     with open('models/reranker_pipeline.pkl', 'wb') as f:
         pickle.dump(pipeline, f)
 
-    print("\n✅ 模型已保存到 models/reranker_pipeline.pkl")
-
-    # 8. 特征重要性
-    feature_importance = np.abs(model.coef_[0])
-    importance_df = pd.DataFrame({
-        'feature': feature_cols,
-        'importance': feature_importance
-    }).sort_values('importance', ascending=False)
-
-    print("\n特征重要性:")
-    print(importance_df)
-
-    return model, scaler, feature_cols
+    print(f"\n✅ 模型已保存到 models/reranker_pipeline.pkl")
+    print(f"   特征顺序: {feature_cols}")
 
 
 if __name__ == "__main__":
