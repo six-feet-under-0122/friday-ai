@@ -1,5 +1,6 @@
 import os
 import time
+import traceback
 import uuid
 from datetime import datetime, timedelta
 
@@ -156,6 +157,8 @@ def upload():
 
         return jsonify({"status": "success", "msg": "知识库构建完成"})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "msg": f"解析失败: {str(e)}"}), 500
 
 @app.delete("/document/<doc_id>")
@@ -297,8 +300,13 @@ def chat():
             "sources": sources
         })
     except Exception as e:
-        return jsonify({"status": "error", "msg": f"AI罢工了: {str(e)}"}), 500
+        traceback.print_exc()
+        return jsonify({
+            "status": "error",
+            "msg": f"AI罢工了: {str(e)}"
+        }), 500
+
 
 # ====== 运行 ======
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=True)
