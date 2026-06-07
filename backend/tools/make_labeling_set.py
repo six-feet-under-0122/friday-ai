@@ -4,8 +4,8 @@ from pathlib import Path
 
 import rag_core
 
-OUT_PATH = "data/to_label.jsonl"
-QUERY_PATH = "data/queries.txt"
+OUT_PATH = "../data/to_label.jsonl"
+QUERY_PATH = "../data/queries.txt"
 
 CANDIDATE_K = 20   # 每个 query 导出多少候选（你可以改 10/20/30）
 
@@ -17,7 +17,7 @@ def doc_key(d):
     return f"{md.get('source', '?')}|{md.get('page', '?')}|{(d.page_content or '')[:80]}"
 
 def main():
-    os.makedirs("data", exist_ok=True)
+    os.makedirs("../data", exist_ok=True)
 
     bm25, vec = rag_core._get_retrievers()
     if not bm25 or not vec:
