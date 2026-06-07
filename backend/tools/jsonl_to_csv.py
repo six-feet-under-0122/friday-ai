@@ -1,8 +1,8 @@
 import csv, json, os, re
 from pathlib import Path
 
-IN_PATH = "data/to_label.jsonl"
-OUT_PATH = "data/to_label.csv"
+IN_PATH = "../data/to_label.jsonl"
+OUT_PATH = "../data/to_label.csv"
 
 def preview(text: str, n=120):
     text = (text or "").replace("\n", " ").replace("\r", " ")
@@ -10,7 +10,7 @@ def preview(text: str, n=120):
     return text[:n]
 
 def main():
-    os.makedirs("uploads/data", exist_ok=True)
+    os.makedirs("../uploads/data", exist_ok=True)
 
     rows = []
     with open(IN_PATH, "r", encoding="utf-8") as f:
