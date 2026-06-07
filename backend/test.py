@@ -8,6 +8,10 @@ from dotenv import load_dotenv
 from langchain_community.vectorstores import Chroma
 # 下面的import 可能因版本不同需调整
 from langchain_community.embeddings import ZhipuAIEmbeddings
+import re
+import jieba
+print("jieba module file:", getattr(jieba, "__file__", None))
+print("jieba attrs sample:", [x for x in ("lcut", "cut", "__version__") if hasattr(jieba, x)])
 # ----------！！！上传！！！----------
 def load_pdf_pages(pdf_path: str):
     # 1) 把用户传入的路径转换为标准绝对路径
@@ -146,7 +150,11 @@ def weighted_hybrid_retrieve(
     return [picked[kk] for kk in ranked_keys[:k]]
 
 
-
+def zh_tokenize(text: str):
+    text = (text or "").strip().lower()
+    text = re.sub(r"\s+", " ", text)
+    tokens = list(jieba.cut(text))   # 兼容性最好
+    return [t for t in tokens if t.strip()]
 # --------------------------------------------------------------------
 print("页数总共有:", len(docs))
 print("一共切成:", len(chunks),"块")
@@ -154,12 +162,13 @@ print("="*50)
 print("第一个chunk metadata:", chunks[0].metadata)
 print("第一个chunk preview:\n", chunks[0].page_content)
 # ---------- BM25 ----------
-bm25 = BM25Retriever.from_documents(chunks)
+
+bm25 = BM25Retriever.from_documents(chunks, preprocess_func=zh_tokenize)
 bm25.k = 5
-
 query = "困惑期怎么度过"
-bm25_hits = bm25.invoke(query)
 
+print("tokenized query:", zh_tokenize(query))
+bm25_hits = bm25.invoke(query)
 print("\n[BM25 hits]")
 for i, d in enumerate(bm25_hits, 1):
     print(f"{i}. page={d.metadata.get('page')} chunk_id={d.metadata.get('chunk_id')}")
