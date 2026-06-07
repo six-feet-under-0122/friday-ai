@@ -1,4 +1,3 @@
-# svm_reranker.py
 import os
 import re
 import pickle

@@ -18,11 +18,9 @@ from langchain_community.retrievers import BM25Retriever
 import re
 import jieba
 
-
 import svm_reranker
 PERSIST_DIR = "chroma_db"
 CHUNKS_FILE = "chunks.pkl"
-
 
 
 def load_pdf_pages(pdf_path: str):
