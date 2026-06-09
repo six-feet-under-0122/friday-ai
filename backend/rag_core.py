@@ -80,11 +80,21 @@ def process_pdf(file_path):
 
         # ===== 新增：给每个 chunk 计算 embedding 并存入 metadata =====
         texts = [d.page_content for d in chunked_docs]
-        vecs = embeddings.embed_documents(texts)  # list[list[float]]
+        vecs = []
+
+        # 智谱 API 限制单次最多 64 条，我们按 60 条一批分批处理
+        batch_size = 60
+        print(f"正在进行向量化，共需分 {(len(texts) // batch_size) + 1} 批处理...")
+
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i + batch_size]
+            batch_vecs = embeddings.embed_documents(batch_texts)
+            vecs.extend(batch_vecs)
+            print(f"  - 已完成 {min(i + batch_size, len(texts))} / {len(texts)} 条向量化")
 
         for d, v in zip(chunked_docs, vecs):
             md = d.metadata or {}
-            md["emb"] = v               # 关键：持久化向量
+            md["emb"] = v  # 关键：持久化向量
             d.metadata = md
 
         # ===== 保存 chunks =====

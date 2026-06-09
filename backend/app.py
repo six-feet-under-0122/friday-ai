@@ -13,6 +13,8 @@ from zhipuai import ZhipuAI
 import rag_core
 from db import init_db, get_db
 
+import data_analysis
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -179,6 +181,24 @@ def delete_document(doc_id):
 
     return jsonify({"msg": "删除成功"})
 
+
+@app.get("/analysis")
+def analyze_dataset():
+    # 鉴权：保证是你自己登录后才能看
+    username, err, code = auth_required()
+    if err:
+        return err, code
+
+    try:
+        # 调用我们刚刚写好的分析函数
+        report_data = data_analysis.generate_analysis_report()
+        return jsonify({
+            "status": "success",
+            "data": report_data
+        })
+    except Exception as e:
+        print(f"分析失败: {str(e)}")
+        return jsonify({"status": "error", "msg": f"分析失败: {str(e)}"}), 500
 # ====== Sessions ======
 @app.get("/sessions")
 def sessions():
@@ -301,4 +321,4 @@ def chat():
 
 # ====== 运行 ======
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=True)
